@@ -9,6 +9,8 @@ import rich
 import tqdm
 from loguru import logger
 from utils import validate_path
+from utils.mongo_interface import MongoInterface
+mongo_handler = None
 
 
 def find_cve_directories(repo_path: str) -> Tuple[List[str], int]:
@@ -28,7 +30,8 @@ def find_cve_directories(repo_path: str) -> Tuple[List[str], int]:
     # Ensure the `data` directory exists
     if not os.path.exists(data_path) or not os.path.isdir(data_path):
         raise typer.BadParameter(
-            f"The 'data' directory does not exist in the given repo path: {data_path}"
+            f"The 'data' directory does not exist in the given repo path: {
+                data_path}"
         )
 
     # Traverse only subdirectories under `data`
@@ -40,7 +43,8 @@ def find_cve_directories(repo_path: str) -> Tuple[List[str], int]:
                 inner_dir_path = os.path.join(sub_dir_path, inner_dir)
                 if os.path.isdir(inner_dir_path) and cve_pattern.match(inner_dir):
                     cve_dirs.append(inner_dir_path)
-    logger.info(f"Found {len(cve_dirs)} CVEs in the  target directory {repo_path}")
+    logger.info(
+        f"Found {len(cve_dirs)} CVEs in the  target directory {repo_path}")
     return cve_dirs, len(cve_dirs)
 
 
@@ -65,7 +69,7 @@ def parse_cve_desc_json(cve_desc_path: str):
 
     # Filled in after parsing the commit
     processed_dict["repo"] = default_str  # Should be freetype/freetype
-    processed_dict["commit_massage"] = default_str
+    processed_dict["commit_message"] = default_str
     # Filled in after saving files to GridFS
     processed_dict["vulnerable_codes_id"] = list()
     processed_dict["patched_code_id"] = list()
@@ -104,7 +108,7 @@ def parse_CVE(cve_dir: str):
 
         logger.info(
             f"Processing {cve_dir}, find {
-                    count_commits(cve_dir)} commits"
+                count_commits(cve_dir)} commits"
         )
 
         # if more than one subdir exists, pass
@@ -120,9 +124,9 @@ def parse_CVE(cve_dir: str):
             cve_dir
         )  # Should be CVE-xxxx.json
         cve_desc = parse_cve_desc_json(cve_desc_path)
-        logger.debug(json.dumps(cve_desc, indent=4, ensure_ascii=False))
         # Parse the commit and save the file to GridFS
-        parse_commit(commit_dir, cve_desc)
+        cve_desc = parse_commit(commit_dir, cve_desc)
+        logger.debug(json.dumps(cve_desc, indent=4, ensure_ascii=False))
 
 
 def parse_commit(commit_dir: str, cve_desc: dict):
@@ -132,15 +136,19 @@ def parse_commit(commit_dir: str, cve_desc: dict):
 
     # Parse the commit description
     commit_desc_path = validate_path.get_unique_json_file_path(
-        commit_dir
+        patched_path
     )  # Should be sha256.json
     logger.debug(f"Commit description path: {commit_desc_path}")
     with open(commit_desc_path, "r") as f:
         commit_desc = json.load(f)
+    logger.debug(json.dumps(commit_desc, indent=4, ensure_ascii=False))
     cve_desc["repo"] = (
         commit_desc.get("owner", "N/A") + "/" + commit_desc.get("repo", "N/A")
     )
-    cve_desc["commit_massage"] = commit_desc.get("commit_message", "N/A")
+
+    cve_desc["commit_message"] = commit_desc.get(
+        "commit_massage", "N/A"
+    )  # NOTE: A silly typo in vulnsrc
 
     # Get the vulnerable codes
     vuln_files = os.listdir(vuln_path)
@@ -149,8 +157,15 @@ def parse_commit(commit_dir: str, cve_desc: dict):
         vuln_file_path = os.path.join(vuln_path, vuln_file)
         logger.debug(f"Processing vulnerable file: {vuln_file_path}")
         # Save the file to GridFS
-        # Use placeholder for now
-        cve_desc["vulnerable_codes_id"].append(vuln_file)
+
+        try:
+            id = mongo_handler.insert_file(vuln_file_path, vuln_file)
+            logger.debug(f"Inserted vulnerable file to GridFS {
+                         vuln_file} with id {id}")
+        except Exception as e:
+            logger.error(f"Failed to insert file {vuln_file}: {e}")
+
+        cve_desc["vulnerable_codes_id"].append(id)
 
     # Get the patched codes
     patched_files = os.listdir(patched_path)
@@ -163,20 +178,31 @@ def parse_commit(commit_dir: str, cve_desc: dict):
             continue
 
         patched_file_path = os.path.join(patched_path, patched_file)
-        logger.debug(f"Processing patched file: {patched_file_path}")
+        logger.debug(f"Processing patched file: {patched_file}")
         # Save the file to GridFS
-        # Use placeholder for now
-        cve_desc["patched_code_id"].append(patched_file)
+        try:
+            id = mongo_handler.insert_file(patched_file_path, patched_file)
+            logger.debug(f"Inserted patched file to GridFS {
+                         patched_file} with id {id}")
+        except Exception as e:
+            logger.error(f"Failed to insert file {patched_file}: {e}")
+
+        cve_desc["patched_code_id"].append(id)
 
     # Get the diff file
-    diff_files = os.listdir(commit_dir)
+    diff_files = os.listdir(patched_path)
     for diff_file in diff_files:
         if diff_file.endswith(".diff"):
             diff_file_path = os.path.join(commit_dir, diff_file)
             logger.debug(f"Processing diff file: {diff_file_path}")
             # Save the file to GridFS
-            # Use placeholder for now
-            cve_desc["diff_id"].append(diff_file)
+            try:
+                id = mongo_handler.insert_file(diff_file_path, diff_file)
+                logger.debug(f"Inserted diff file to GridFS {
+                             diff_file} with id {id}")
+            except Exception as e:
+                logger.error(f"Failed to insert file {diff_file}: {e}")
+            cve_desc["diff_id"].append(id)
 
     return cve_desc
 
@@ -187,19 +213,24 @@ def main(
         callback=validate_path.validate_path,
         help="The path of Vulsrc repo's root path",
     ),
-    mongo_host: str = typer.Option("127.0.0.1", help="The host address of the mongodb"),
+    mongo_host: str = typer.Option(
+        "127.0.0.1", help="The host address of the mongodb"),
     mongo_port: int = typer.Option(27017, help="The port of the mongodb port"),
 ):
-    # console = rich.console()
+
     logger.info(f"{repo_path=},{mongo_host=},{mongo_port=}")
+    # Initialize the MongoDB connection
+    global mongo_handler
+    mongo_handler = MongoInterface(mongo_host, mongo_port)
 
     # 获取该目录下所有的CVE信息
     cve_dirs, dirs_cnt = find_cve_directories(repo_path=repo_path)
+    logger.info(f"Found {dirs_cnt} CVEs in the target directory {repo_path}")
 
     # Main Loop. 遍历所有的CVE目录并解析其中的数据
     for cve_dir in tqdm.tqdm(cve_dirs, desc="Parsing CVEs", unit="CVE"):
         logger.info(f"Parsing {cve_dir}")
-        # Return a dict with file and LLM-based info unfilled
+        # Return a dict with file and LLM-based info filled
         parse_CVE(cve_dir)
 
 
