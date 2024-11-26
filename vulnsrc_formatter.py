@@ -92,12 +92,18 @@ def parse_CVE(cve_dir: str):
     Returns:
         dict: Parsed CVE data.
     """
+
     # if no subdir exists, pass
     if not os.path.exists(cve_dir) or not os.path.isdir(cve_dir):
         # Assume this directory has no valid commit
         logger.warning(f"No valid commit in {cve_dir}, skipping")
         return dict()
     else:
+        # Check if the CVE has been parsed and saved to MongoDB
+        cve_number = os.path.basename(cve_dir)
+        if mongo_handler.find_one({"cve_number": cve_number}):
+            logger.warning(f"Already parsed {cve_number}, skipping")
+            return dict()
 
         def count_commits(directory):
             return sum(
@@ -126,7 +132,19 @@ def parse_CVE(cve_dir: str):
         cve_desc = parse_cve_desc_json(cve_desc_path)
         # Parse the commit and save the file to GridFS
         cve_desc = parse_commit(commit_dir, cve_desc)
+
+        # Save the parsed data to MongoDB
+        try:
+            mongo_handler.insert(cve_desc)
+            logger.info(f"Inserted {cve_desc['cve_number']} to MongoDB")
+        except Exception as e:
+            logger.exception(f"Failed to insert {cve_desc['cve_number']}: {e}")
+
+        # Convert _id to printable string
+        cve_desc["_id"] = str(cve_desc["_id"])
+
         logger.debug(json.dumps(cve_desc, indent=4, ensure_ascii=False))
+        return cve_desc
 
 
 def parse_commit(commit_dir: str, cve_desc: dict):
@@ -141,7 +159,6 @@ def parse_commit(commit_dir: str, cve_desc: dict):
     logger.debug(f"Commit description path: {commit_desc_path}")
     with open(commit_desc_path, "r") as f:
         commit_desc = json.load(f)
-    logger.debug(json.dumps(commit_desc, indent=4, ensure_ascii=False))
     cve_desc["repo"] = (
         commit_desc.get("owner", "N/A") + "/" + commit_desc.get("repo", "N/A")
     )
@@ -193,7 +210,7 @@ def parse_commit(commit_dir: str, cve_desc: dict):
     diff_files = os.listdir(patched_path)
     for diff_file in diff_files:
         if diff_file.endswith(".diff"):
-            diff_file_path = os.path.join(commit_dir, diff_file)
+            diff_file_path = os.path.join(patched_path, diff_file)
             logger.debug(f"Processing diff file: {diff_file_path}")
             # Save the file to GridFS
             try:
@@ -221,7 +238,8 @@ def main(
     logger.info(f"{repo_path=},{mongo_host=},{mongo_port=}")
     # Initialize the MongoDB connection
     global mongo_handler
-    mongo_handler = MongoInterface(mongo_host, mongo_port)
+    mongo_handler = MongoInterface(
+        mongo_host, mongo_port)
 
     # 获取该目录下所有的CVE信息
     cve_dirs, dirs_cnt = find_cve_directories(repo_path=repo_path)
@@ -239,9 +257,12 @@ if __name__ == "__main__":
     typer.run(main)
 """
 
-# Test and parse single CVE
+# Unit test and parse single CVE
 if __name__ == "__main__":
     logger.remove()
     logger.add(sys.stderr, level="DEBUG")
+    # Initialize the MongoDB connection
+
+    mongo_handler = MongoInterface("127.0.0.1", 27017)
     cve_dir = "../VulnCodeCollector/data/boundary/CVE-2018-10940"
     parse_CVE(cve_dir)

@@ -24,8 +24,10 @@ class MongoInterface:
         Args:
             host (str): The MongoDB host.
             port (int): The MongoDB port.
+
         """
-        self.client: pymongo.MongoClient = pymongo.MongoClient(host, port)
+        self.client: pymongo.MongoClient = pymongo.MongoClient(
+            host=host, port=port)
         self.db: Database = self.client["vulnsrc"]
         self.collection: Collection = self.db["cves"]
         self.fs: gridfs.GridFS = gridfs.GridFS(self.db)

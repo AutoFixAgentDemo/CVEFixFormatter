@@ -5,3 +5,13 @@ CVEFixFormatter is a lightweight tool for transforming CVEfix dataset into custo
 ![alt text](image.png)
 
 我们的数据集来源于两个项目,分别是CVEFix(Link Required)和[VulnCodeCollector](https://github.com/iridium-soda/VulnCodeCollector).我们分别对这两个项目进行处理和清洗.以提取高级语义化的信息.并存入mongodb中.
+
+## CVE formatter
+
+### Install
+
+```shell
+docker run -d --name cve-mongodb -p 27017:27017 \
+  -v ~/Data/CVE_knowledgebase_mongo:/data/db \
+  mongo --noauth
+```
