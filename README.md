@@ -8,10 +8,61 @@ CVEFixFormatter is a lightweight tool for transforming CVEfix dataset into custo
 
 ## CVE formatter
 
+该功能从[VulnCodeCollector](https://github.com/iridium-soda/VulnCodeCollector)中自动化解析并提取CVE信息，自动由大模型生成语义化信息并存入mongodb中。
+
 ### Install
+
+Initialize mongo container
 
 ```shell
 docker run -d --name cve-mongodb -p 27017:27017 \
-  -v ~/Data/CVE_knowledgebase_mongo:/data/db \
+  -v [mount point]:/data/db \
   mongo --noauth
+```
+
+Clone VulnCodeCollector
+
+```shell
+git clone https://github.com/iridium-soda/VulnCodeCollector.git
+```
+
+### Run
+
+Usage:
+
+```plaintext
+ Usage: vulnsrc_formatter.py [OPTIONS]                 
+                                                       
+╭─ Options ───────────────────────────────────────────╮
+│ *  --repo-path         TEXT     The path of Vulsrc  │
+│                                 repo's root path    │
+│                                 [default: None]     │
+│                                 [required]          │
+│    --mongo-host        TEXT     The host address of │
+│                                 the mongodb         │
+│                                 [default:           │
+│                                 127.0.0.1]          │
+│    --mongo-port        INTEGER  The port of the     │
+│                                 mongodb port        │
+│                                 [default: 27017]    │
+│    --help                       Show this message   │
+│                                 and exit.           │
+╰─────────────────────────────────────────────────────╯
+```
+
+### Flow
+
+```mermaid
+flowchart LR
+    A(main) --> B(parse_CVE)
+    B --> commit_enrty
+    subgraph parse_commit 
+        commit_enrty-->parse_the_commit_description
+        parse_the_commit_description-->get_files
+        get_files-->save_files
+        save_files-->|GridFS_id|commit_enrty
+        commit_enrty-->ask_LLM
+        ask_LLM-->|Semantic info|commit_enrty
+        commit_enrty-->save_desc_to_mongo
+    end
 ```

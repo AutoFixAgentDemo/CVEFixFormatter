@@ -252,17 +252,16 @@ def main(
         parse_CVE(cve_dir)
 
 
-"""
 if __name__ == "__main__":
     typer.run(main)
-"""
+
 
 # Unit test and parse single CVE
-if __name__ == "__main__":
-    logger.remove()
-    logger.add(sys.stderr, level="DEBUG")
-    # Initialize the MongoDB connection
+# if __name__ == "__main__":
+#     logger.remove()
+#     logger.add(sys.stderr, level="DEBUG")
+#     # Initialize the MongoDB connection
 
-    mongo_handler = MongoInterface("127.0.0.1", 27017)
-    cve_dir = "../VulnCodeCollector/data/boundary/CVE-2018-10940"
-    parse_CVE(cve_dir)
+#     mongo_handler = MongoInterface("127.0.0.1", 27017)
+#     cve_dir = "../VulnCodeCollector/data/boundary/CVE-2018-10940"
+#     parse_CVE(cve_dir)
