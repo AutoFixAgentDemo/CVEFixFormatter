@@ -137,3 +137,15 @@ class MongoInterface:
         with open(file_path, "rb") as f:
             file_id = self.fs.put(f, filename=file_name)
         return str(file_id)
+
+    def find_file_by_id(self, file_id: str) -> Union[gridfs.GridOut, None]:
+        """
+        Find a file in GridFS by its ID.
+
+        Args:
+            file_id (str): The ID of the file to find.
+
+        Returns:
+            Union[gridfs.GridOut, None]: The file if found, None otherwise.
+        """
+        return self.fs.find_one({"_id": file_id})

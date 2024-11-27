@@ -4,13 +4,17 @@ import json
 import sys
 from typing import List, Tuple
 
+import yaml
 import typer
 import rich
 import tqdm
 from loguru import logger
 from utils import validate_path
 from utils.mongo_interface import MongoInterface
+from utils.providers.ollama_api import OllamaChatBase
+
 mongo_handler = None
+llm_handler = None
 
 
 def find_cve_directories(repo_path: str) -> Tuple[List[str], int]:
@@ -132,6 +136,7 @@ def parse_CVE(cve_dir: str):
         cve_desc = parse_cve_desc_json(cve_desc_path)
         # Parse the commit and save the file to GridFS
         cve_desc = parse_commit(commit_dir, cve_desc)
+        cve_desc = ask_llm(cve_desc)
 
         # Save the parsed data to MongoDB
         try:
@@ -177,8 +182,10 @@ def parse_commit(commit_dir: str, cve_desc: dict):
 
         try:
             id = mongo_handler.insert_file(vuln_file_path, vuln_file)
-            logger.debug(f"Inserted vulnerable file to GridFS {
-                         vuln_file} with id {id}")
+            logger.debug(
+                f"Inserted vulnerable file to GridFS {
+                    vuln_file} with id {id}"
+            )
         except Exception as e:
             logger.error(f"Failed to insert file {vuln_file}: {e}")
 
@@ -199,8 +206,10 @@ def parse_commit(commit_dir: str, cve_desc: dict):
         # Save the file to GridFS
         try:
             id = mongo_handler.insert_file(patched_file_path, patched_file)
-            logger.debug(f"Inserted patched file to GridFS {
-                         patched_file} with id {id}")
+            logger.debug(
+                f"Inserted patched file to GridFS {
+                    patched_file} with id {id}"
+            )
         except Exception as e:
             logger.error(f"Failed to insert file {patched_file}: {e}")
 
@@ -215,12 +224,216 @@ def parse_commit(commit_dir: str, cve_desc: dict):
             # Save the file to GridFS
             try:
                 id = mongo_handler.insert_file(diff_file_path, diff_file)
-                logger.debug(f"Inserted diff file to GridFS {
-                             diff_file} with id {id}")
+                logger.debug(
+                    f"Inserted diff file to GridFS {
+                        diff_file} with id {id}"
+                )
             except Exception as e:
                 logger.error(f"Failed to insert file {diff_file}: {e}")
             cve_desc["diff_id"].append(id)
 
+    return cve_desc
+
+
+def ask_llm(cve_desc: dict) -> dict:
+    """
+    To ask LLM for the functional description, causes of the vulnerability, and solution.
+
+    Args:
+        cve_desc (dict): The parsed CVE description data. Shold be filled except for the LLM-based info.
+
+    Returns:
+        dict: The updated CVE description data.
+    """
+    PROMPT_TEMPLATE_ABSTRACT = """
+    # Prompt Template
+
+    Please analyze the following CVE (Common Vulnerabilities and Exposures) description provided in JSON format. Using both the provided information and your prior knowledge, thoroughly answer the following questions using the specific symbols provided in the code snippet:
+
+    1. **Functional Description of Each Function Involved in the Diff:**
+    - For **each function** mentioned in the diff, provide a detailed description of its **purpose**, how it operates within the codebase, and its role in the overall system.
+
+    2. **Causes of the Vulnerability:**
+    - Explain in detail the root causes of the vulnerability. Discuss any flaws in logic, validation errors, improper handling of inputs, or other coding issues that led to the vulnerability.
+
+    3. **Description of How the Patch Fixes the Vulnerability:**
+    - Describe precisely how the patch addresses and resolves the vulnerability. Explain the specific changes made to the code and why these changes effectively mitigate the issue.
+    **CVE Description:**
+    ```json
+    {cve_desc}
+    ```
+    **Original code:**
+    {vulnerable_code}
+
+    **Patched code:**
+    {patched_code}
+
+    **Diff:**
+    {diff}
+
+    **Output Format: **
+
+    Please present your answers in the following JSON format without modifying the keys and any other unnecessary contents. You may provide additional information in the values as needed.:
+
+    {
+        "functional_description": {
+            "function_name1": "Detailed description of function_name1.",
+            "function_name2": "Detailed description of function_name2."
+            // Add more functions as needed.
+        },
+        "causes": "Comprehensive explanation of the causes of the vulnerability.",
+        "solution": "Detailed description of how the patch fixes the vulnerability."
+    }
+    """
+    retry_cnt = 0
+    MAX_RETRY = 3
+
+    # Retrieve the files from GridFS using id in the cve_desc
+    try:
+        vuln_files = mongo_handler.find_files(cve_desc["vulnerable_codes_id"])
+        patched_files = mongo_handler.find_files(cve_desc["patched_code_id"])
+        diff_files = mongo_handler.find_files(cve_desc["diff_id"])
+    except Exception as e:
+        logger.error(f"Failed to retrieve files from GridFS: {e}")
+        return None
+
+    # Get the content of the files
+    vulnerable_code = patched_code = diff = ""
+    for file in vuln_files:
+        # Get the filename
+        filename = file.filename
+        vulnerable_code += f"**{filename}**\n" + \
+            file.read().decode("utf-8") + "\n\n"
+    for file in patched_files:
+        # Get the filename
+        filename = file.filename
+        patched_code += f"**{filename}**\n" + \
+            file.read().decode("utf-8") + "\n\n"
+    for file in diff_files:
+        # Get the filename
+        filename = file.filename
+        diff += f"**{filename}**\n" + file.read().decode("utf-8") + "\n\n"
+
+    # Fill in the prompt template
+    prompt = PROMPT_TEMPLATE_ABSTRACT.format(
+        cve_desc=json.dumps(cve_desc, indent=4, ensure_ascii=False),
+        vulnerable_code=vulnerable_code,
+        patched_code=patched_code,
+        diff=diff,
+    )
+    while retry_cnt < MAX_RETRY:
+        resp_dict = llm_handler.send_message(prompt)
+        logger.debug(f"Response from LLM in 1st stage: {resp_dict}")
+        # Validity check if the response is a dict and keys are correct
+        if not isinstance(resp_dict, dict):
+            logger.warning(f"Invalid response from LLM: {
+                resp_dict}. Retry...{retry_cnt}")
+            retry_cnt += 1
+            continue
+        if not all(
+            key in resp_dict.keys()
+            for key in ["functional_description", "causes", "solution"]
+        ):
+            logger.warning(f"Invalid response from LLM: Dismatched key {
+                resp_dict}. Retry...{retry_cnt}")
+            retry_cnt += 1
+
+            continue
+        # Get the content in resp_dict
+        functional_desc = resp_dict["functional_description"]
+        causes = resp_dict["causes"]
+        solution = resp_dict["solution"]
+        break
+    if retry_cnt == MAX_RETRY:
+        logger.error(
+            f"Failed to get valid response from LLM in 1st stage. Exiting...")
+        return None
+
+    # The second stage of asking LLM
+    PROMPT_TEMPLATE_GENERAL = """
+        You are tasked with analyzing the provided information about a CVE, including the code, patch, diff, and abstract descriptions of the cause and solution. Based on this information, please address the following:
+
+        1. **Function Summaries:**
+        - Summarize the purpose and functionality of each function involved in the diff concisely and without using specific symbols or extra explanations.
+
+        2. **Generalizable Vulnerability Behavior:**
+        - Summarize the specific behavior of the code that caused the vulnerability, ensuring your description is generalized but retains the technical specificity of the root issue.
+
+        3. **Specific Solution to Fix the Vulnerability:**
+        - Provide a summary of the specific solution implemented in the patch to address the vulnerability.
+        **Original code:**
+        {vulnerable_code}
+
+        **Patched code:**
+        {patched_code}
+        
+        **Diff:**
+        {diff}
+        
+        **Abstract Purpose Description:**
+        {functional_desc}
+        
+        **Abstract Causes:**
+        {causes}
+        
+        **Abstract Solution:**
+        {solution}
+        
+        **Output Format:**
+
+        Provide your answers in the following JSON structure:
+
+        ```json
+        {
+            "functional_description": {
+                "function_name1": "Summary of function_name1",
+                "function_name2": "Summary of function_name2"
+                // Add more functions as needed
+            },
+            "causes": "Generalized explanation of the code behavior that leads to the vulnerability.",
+            "solution": "Specific explanation of how the patch fixes the vulnerability."
+        }"""
+    prompt = PROMPT_TEMPLATE_GENERAL.format(
+        vulnerable_code=vulnerable_code,
+        patched_code=patched_code,
+        diff=diff,
+        functional_desc=functional_desc,
+        causes=causes,
+        solution=solution,
+    )
+    retry_cnt = 0
+    while retry_cnt < MAX_RETRY:
+        resp_dict = llm_handler.send_message(prompt)
+
+        # Validity check if the response is a dict and keys are correct
+        if not isinstance(resp_dict, dict):
+            logger.warning(f"Invalid response from LLM: {
+                resp_dict}. Retry...{retry_cnt}")
+            retry_cnt += 1
+            continue
+        if not all(
+            key in resp_dict.keys()
+            for key in ["functional_description", "causes", "solution"]
+        ):
+            logger.warning(f"Invalid response from LLM: Dismatched key {
+                resp_dict}. Retry...{retry_cnt}")
+            retry_cnt += 1
+
+            continue
+        # Get the content in resp_dict
+        functional_desc = resp_dict["functional_description"]
+        causes = resp_dict["causes"]
+        solution = resp_dict["solution"]
+        break
+    if retry_cnt == MAX_RETRY:
+        logger.error(
+            f"Failed to get valid response from LLM in 2nd stage. Exiting...")
+        return None
+
+    # Merge the results to CVE description
+    cve_desc["functional_desc"] = functional_desc
+    cve_desc["causes_of_the_vuln"] = causes
+    cve_desc["solution"] = solution
     return cve_desc
 
 
@@ -238,8 +451,22 @@ def main(
     logger.info(f"{repo_path=},{mongo_host=},{mongo_port=}")
     # Initialize the MongoDB connection
     global mongo_handler
-    mongo_handler = MongoInterface(
-        mongo_host, mongo_port)
+    mongo_handler = MongoInterface(mongo_host, mongo_port)
+
+    # Load and parse LLM providers info from config.yaml
+    with open("config.yaml", "r") as file:
+        config = yaml.safe_load(file)
+
+    logger.debug(f"Loaded config: {config}")
+    try:
+        api_endpoints = config["llm"]["base_url"]
+        model = config["llm"]["model"]
+    except KeyError as e:
+        logger.error(f"Failed to load LLM config: {e}")
+        return
+    logger.info(f"LLM API info loaded: {api_endpoints=}, {model=}")
+    global llm_handler
+    llm_handler = OllamaChatBase(api_endpoints, model)
 
     # 获取该目录下所有的CVE信息
     cve_dirs, dirs_cnt = find_cve_directories(repo_path=repo_path)

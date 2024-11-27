@@ -26,6 +26,19 @@ Clone VulnCodeCollector
 git clone https://github.com/iridium-soda/VulnCodeCollector.git
 ```
 
+### Config
+
+> [!tip]  
+> 本项目采用基于 Ollama 的 Qwen2.5Code 模型对代码进行语义清洗，暂时只支持Ollama标准的API接口。如有需要请在`utils/providers`中进行编写并修改源代码。
+
+生成项目配置文件：
+
+```shell
+cp config.example.yaml config.yaml
+```
+
+打开 `config.yaml` 文件，根据当前可用的大模型提供商进行适配和调整。确保配置符合实际需求，以便正常使用项目功能。
+
 ### Run
 
 Usage:
