@@ -17,7 +17,7 @@ class OllamaChatBase:
         self.base_url = base_url
         self.model = model
 
-    def send_message(self, user_message: str) -> dict:
+    def send_message(self, user_message: str) -> str:
         """
         Sends a chat message to the API and returns the response.
 

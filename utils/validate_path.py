@@ -14,6 +14,11 @@ def validate_path(repo_path: str) -> str:
     return repo_path
 
 
+def list_all_dirs_in_path(path: str) -> list:
+    """List all directories in the given path."""
+    return [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
+
+
 def get_unique_json_file_path(directory):
     # 查找目录下所有的 JSON 文件
     json_files = glob.glob(os.path.join(directory, "*.json"))
@@ -23,12 +28,10 @@ def get_unique_json_file_path(directory):
         return json_files[0]  # 返回唯一 JSON 文件的路径
     elif len(json_files) == 0:
         raise FileNotFoundError(
-            "No JSON file found in the specified directory.")
+            f"No JSON file found in the specified directory {directory}.")
     else:
         raise ValueError(
-            "Multiple JSON files found in the specified directory.")
-
-
+            f"Multiple JSON files found in the specified directory. {directory}")
 
 
 if __name__ == "__main__":

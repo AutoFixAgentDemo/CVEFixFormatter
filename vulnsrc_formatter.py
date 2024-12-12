@@ -122,12 +122,16 @@ def parse_CVE(cve_dir: str):
         )
 
         # if more than one subdir exists, pass
+        # FIX: os.listdir is incorrect, should use os.scandir
         if count_commits(cve_dir) != 1:
             logger.warning(f"Multiple commits in {cve_dir}, skipping")
-            logger.debug(f"Subdirectories: {os.listdir(cve_dir)}")
+            logger.debug(f"Subdirectories: {
+                         validate_path.list_all_dirs_in_path(cve_dir)}")
+
             return dict()
         else:
-            commit_dir = os.path.join(cve_dir, os.listdir(cve_dir)[0])
+            commit_dir = os.path.join(
+                cve_dir, validate_path.list_all_dirs_in_path(cve_dir)[0])
 
         # Parse json
         cve_desc_path = validate_path.get_unique_json_file_path(
@@ -289,10 +293,22 @@ def ask_llm(cve_desc: dict) -> dict:
     MAX_RETRY = 3
 
     # Retrieve the files from GridFS using id in the cve_desc
+    # Fix: wrong method calling
+    # Fix: cve_desc["vulnerable_codes_id"] is a list and may contains multiple files.
+    # NOTE: vuln_files should be a list of file pointers
     try:
-        vuln_files = mongo_handler.find_files(cve_desc["vulnerable_codes_id"])
-        patched_files = mongo_handler.find_files(cve_desc["patched_code_id"])
-        diff_files = mongo_handler.find_files(cve_desc["diff_id"])
+        vuln_files = patched_files = diff_files = []
+        for vuln_id in cve_desc["vulnerable_codes_id"]:
+            vuln_files.append(mongo_handler.find_file_by_id(vuln_id))
+        for patched_id in cve_desc["patched_code_id"]:
+            patched_files.append(mongo_handler.find_file_by_id(patched_id))
+        for diff_id in cve_desc["diff_id"]:
+            diff_files.append(mongo_handler.find_file_by_id(diff_id))
+
+        # logger.debug(f"{vuln_files=},{patched_files=},{diff_files=}")
+        # Ensure the files are not None
+        assert vuln_files and patched_files and diff_files
+
     except Exception as e:
         logger.error(f"Failed to retrieve files from GridFS: {e}")
         return None
@@ -315,6 +331,7 @@ def ask_llm(cve_desc: dict) -> dict:
         diff += f"**{filename}**\n" + file.read().decode("utf-8") + "\n\n"
 
     # Fill in the prompt template
+    # FIXME: KeyError: '\n        "functional_description"'
     prompt = PROMPT_TEMPLATE_ABSTRACT.format(
         cve_desc=json.dumps(cve_desc, indent=4, ensure_ascii=False),
         vulnerable_code=vulnerable_code,
@@ -366,19 +383,19 @@ def ask_llm(cve_desc: dict) -> dict:
 
         **Patched code:**
         {patched_code}
-        
+
         **Diff:**
         {diff}
-        
+
         **Abstract Purpose Description:**
         {functional_desc}
-        
+
         **Abstract Causes:**
         {causes}
-        
+
         **Abstract Solution:**
         {solution}
-        
+
         **Output Format:**
 
         Provide your answers in the following JSON structure:

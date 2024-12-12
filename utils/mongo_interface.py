@@ -3,6 +3,8 @@ import pymongo
 from pymongo.collection import Collection
 from pymongo.database import Database
 from pymongo.cursor import Cursor
+from bson.objectid import ObjectId
+from loguru import logger
 import gridfs
 
 
@@ -138,7 +140,7 @@ class MongoInterface:
             file_id = self.fs.put(f, filename=file_name)
         return str(file_id)
 
-    def find_file_by_id(self, file_id: str) -> Union[gridfs.GridOut, None]:
+    def find_file_by_id(self, file_id: str):
         """
         Find a file in GridFS by its ID.
 
@@ -146,6 +148,13 @@ class MongoInterface:
             file_id (str): The ID of the file to find.
 
         Returns:
-            Union[gridfs.GridOut, None]: The file if found, None otherwise.
+
         """
-        return self.fs.find_one({"_id": file_id})
+        # Fix: input ObjectId, not raw str
+        file_id = ObjectId(file_id)
+        if self.fs.exists(file_id):
+            return self.fs.get(file_id)
+
+        else:
+            logger.warning(f"File {file_id} not exists!")
+            return None
