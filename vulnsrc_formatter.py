@@ -355,10 +355,16 @@ def ask_llm(cve_desc: dict) -> dict:
         logger.error(f"Failed to fill in the prompt template: {e}")
     while retry_cnt < MAX_RETRY:
         resp_raw = llm_handler.send_message(prompt)
-        resp_dict = extract_json(resp_raw)
+        try:
+            resp_dict = json.loads(resp_raw)
+        except json.JSONDecodeError:
+            logger.warning(
+                f"Failed to parse JSON response from LLM:{e}."
+            )
+            resp_dict = extract_json(resp_raw)
         logger.debug(f"Response from LLM in 1st stage: {resp_dict}")
         # Validity check if the response is a dict and keys are correct
-        if resp_dict is None or not isinstance(resp_dict, dict):
+        if resp_dict is None:
             logger.warning(
                 f"Invalid response from LLM: {
                     resp_dict}. Retry...{retry_cnt}"
@@ -388,7 +394,7 @@ def ask_llm(cve_desc: dict) -> dict:
 
     # The second stage of asking LLM
     PROMPT_TEMPLATE_GENERAL = """
-        You are tasked with analyzing the provided information about a CVE, including the code, patch, diff, and abstract descriptions of the cause and solution. Based on this information, please address the following:
+        You are tasked with analyzing the provided information about a CVE, including the code, patch, diff, and abstract descriptions of the cause and solution. Based on this information, please address the following WITHOUT referencing the original CVE description or the sepcific name of variables, functions, or classes:
 
         1. **Function Summaries:**
         - Summarize the purpose and functionality of each function involved in the diff concisely and without using specific symbols or extra explanations.
@@ -397,7 +403,7 @@ def ask_llm(cve_desc: dict) -> dict:
         - Summarize the specific behavior of the code that caused the vulnerability, ensuring your description is generalized but retains the technical specificity of the root issue.
 
         3. **Specific Solution to Fix the Vulnerability:**
-        - Provide a summary of the specific solution implemented in the patch to address the vulnerability.
+        - Provide a summary of the specific solution implemented in the patch to address the vulnerability WITHOUT referencing the original CVE description or the sepcific name of variables, functions, or classes.
         **Original code:**
         {vulnerable_code}
 
@@ -419,8 +425,8 @@ def ask_llm(cve_desc: dict) -> dict:
         **Output Format:**
 
         Provide your answers in the following JSON structure:
-        
-        ```json 
+
+        ```json
         {{
             "functional_description": {{
                 "function_name1": "Summary of function_name1",
@@ -443,9 +449,16 @@ def ask_llm(cve_desc: dict) -> dict:
     retry_cnt = 0
     while retry_cnt < MAX_RETRY:
         resp_raw = llm_handler.send_message(prompt)
-        resp_dict = extract_json(resp_raw)
+        try:
+            resp_dict = json.loads(resp_raw)
+        except json.JSONDecodeError:
+            logger.warning(
+                f"Failed to parse JSON response from LLM:{e}."
+            )
+            resp_dict = extract_json(resp_raw)
+        logger.debug(f"Response from LLM in 1st stage: {resp_dict}")
         # Validity check if the response is a dict and keys are correct
-        if resp_dict is None or not isinstance(resp_dict, dict):
+        if resp_dict is None:
             logger.warning(
                 f"Invalid response from LLM: {
                     resp_dict}. Retry...{retry_cnt}"
