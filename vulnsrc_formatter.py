@@ -12,6 +12,7 @@ from loguru import logger
 from utils import validate_path
 from utils.mongo_interface import MongoInterface
 from utils.providers.ollama_api import OllamaChatBase
+from utils.extract_json import extract_json
 
 mongo_handler = None
 llm_handler = None
@@ -125,13 +126,16 @@ def parse_CVE(cve_dir: str):
         # FIX: os.listdir is incorrect, should use os.scandir
         if count_commits(cve_dir) != 1:
             logger.warning(f"Multiple commits in {cve_dir}, skipping")
-            logger.debug(f"Subdirectories: {
-                         validate_path.list_all_dirs_in_path(cve_dir)}")
+            logger.debug(
+                f"Subdirectories: {
+                    validate_path.list_all_dirs_in_path(cve_dir)}"
+            )
 
             return dict()
         else:
             commit_dir = os.path.join(
-                cve_dir, validate_path.list_all_dirs_in_path(cve_dir)[0])
+                cve_dir, validate_path.list_all_dirs_in_path(cve_dir)[0]
+            )
 
         # Parse json
         cve_desc_path = validate_path.get_unique_json_file_path(
@@ -141,6 +145,11 @@ def parse_CVE(cve_dir: str):
         # Parse the commit and save the file to GridFS
         cve_desc = parse_commit(commit_dir, cve_desc)
         cve_desc = ask_llm(cve_desc)
+
+        if cve_desc is None:
+            logger.error(f"Failed to parse {
+                         cve_desc_path}: max retry reached. Gracefully exiting...")
+            return None
 
         # Save the parsed data to MongoDB
         try:
@@ -278,16 +287,17 @@ def ask_llm(cve_desc: dict) -> dict:
     **Output Format: **
 
     Please present your answers in the following JSON format without modifying the keys and any other unnecessary contents. You may provide additional information in the values as needed.:
-
-    {
-        "functional_description": {
-            "function_name1": "Detailed description of function_name1.",
-            "function_name2": "Detailed description of function_name2."
+    ```json
+    {{
+        \"functional_description\": {{
+            \"function_name1\": "Detailed description of function_name1.",
+            \"function_name2\": "Detailed description of function_name2."
             // Add more functions as needed.
-        },
-        "causes": "Comprehensive explanation of the causes of the vulnerability.",
-        "solution": "Detailed description of how the patch fixes the vulnerability."
-    }
+        }},
+        \"causes\": "Comprehensive explanation of the causes of the vulnerability.",
+        \"solution\": "Detailed description of how the patch fixes the vulnerability."
+    }}
+    ```
     """
     retry_cnt = 0
     MAX_RETRY = 3
@@ -332,27 +342,37 @@ def ask_llm(cve_desc: dict) -> dict:
 
     # Fill in the prompt template
     # FIXME: KeyError: '\n        "functional_description"'
-    prompt = PROMPT_TEMPLATE_ABSTRACT.format(
-        cve_desc=json.dumps(cve_desc, indent=4, ensure_ascii=False),
-        vulnerable_code=vulnerable_code,
-        patched_code=patched_code,
-        diff=diff,
-    )
+    try:
+        prompt = PROMPT_TEMPLATE_ABSTRACT.format(
+            cve_desc=json.dumps(cve_desc, indent=4, ensure_ascii=False).replace(
+                '"', '\\"'
+            ),
+            vulnerable_code=vulnerable_code,
+            patched_code=patched_code,
+            diff=diff,
+        )
+    except KeyError as e:
+        logger.error(f"Failed to fill in the prompt template: {e}")
     while retry_cnt < MAX_RETRY:
-        resp_dict = llm_handler.send_message(prompt)
+        resp_raw = llm_handler.send_message(prompt)
+        resp_dict = extract_json(resp_raw)
         logger.debug(f"Response from LLM in 1st stage: {resp_dict}")
         # Validity check if the response is a dict and keys are correct
-        if not isinstance(resp_dict, dict):
-            logger.warning(f"Invalid response from LLM: {
-                resp_dict}. Retry...{retry_cnt}")
+        if resp_dict is None or not isinstance(resp_dict, dict):
+            logger.warning(
+                f"Invalid response from LLM: {
+                    resp_dict}. Retry...{retry_cnt}"
+            )
             retry_cnt += 1
             continue
         if not all(
             key in resp_dict.keys()
             for key in ["functional_description", "causes", "solution"]
         ):
-            logger.warning(f"Invalid response from LLM: Dismatched key {
-                resp_dict}. Retry...{retry_cnt}")
+            logger.warning(
+                f"Invalid response from LLM: Dismatched key {
+                    resp_dict}. Retry...{retry_cnt}"
+            )
             retry_cnt += 1
 
             continue
@@ -362,7 +382,7 @@ def ask_llm(cve_desc: dict) -> dict:
         solution = resp_dict["solution"]
         break
     if retry_cnt == MAX_RETRY:
-        logger.error(
+        logger.warning(
             f"Failed to get valid response from LLM in 1st stage. Exiting...")
         return None
 
@@ -399,17 +419,19 @@ def ask_llm(cve_desc: dict) -> dict:
         **Output Format:**
 
         Provide your answers in the following JSON structure:
-
-        ```json
-        {
-            "functional_description": {
+        
+        ```json 
+        {{
+            "functional_description": {{
                 "function_name1": "Summary of function_name1",
                 "function_name2": "Summary of function_name2"
                 // Add more functions as needed
-            },
+            }},
             "causes": "Generalized explanation of the code behavior that leads to the vulnerability.",
             "solution": "Specific explanation of how the patch fixes the vulnerability."
-        }"""
+        }}
+        ```
+        """
     prompt = PROMPT_TEMPLATE_GENERAL.format(
         vulnerable_code=vulnerable_code,
         patched_code=patched_code,
@@ -420,20 +442,24 @@ def ask_llm(cve_desc: dict) -> dict:
     )
     retry_cnt = 0
     while retry_cnt < MAX_RETRY:
-        resp_dict = llm_handler.send_message(prompt)
-
+        resp_raw = llm_handler.send_message(prompt)
+        resp_dict = extract_json(resp_raw)
         # Validity check if the response is a dict and keys are correct
-        if not isinstance(resp_dict, dict):
-            logger.warning(f"Invalid response from LLM: {
-                resp_dict}. Retry...{retry_cnt}")
+        if resp_dict is None or not isinstance(resp_dict, dict):
+            logger.warning(
+                f"Invalid response from LLM: {
+                    resp_dict}. Retry...{retry_cnt}"
+            )
             retry_cnt += 1
             continue
         if not all(
             key in resp_dict.keys()
             for key in ["functional_description", "causes", "solution"]
         ):
-            logger.warning(f"Invalid response from LLM: Dismatched key {
-                resp_dict}. Retry...{retry_cnt}")
+            logger.warning(
+                f"Invalid response from LLM: Dismatched key {
+                    resp_dict}. Retry...{retry_cnt}"
+            )
             retry_cnt += 1
 
             continue

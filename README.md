@@ -79,9 +79,3 @@ flowchart LR
         commit_enrty-->save_desc_to_mongo
     end
 ```
-
-## NOTE
-
-graphrag by Microsoft is better than traditional rag?
-
-<https://www.graphrag.club>
