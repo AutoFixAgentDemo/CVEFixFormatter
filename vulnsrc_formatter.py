@@ -289,9 +289,13 @@ def ask_llm(cve_desc: dict) -> dict:
     Please present your answers in the following JSON format without modifying the keys and any other unnecessary contents. You may provide additional information in the values as needed.:
     ```json
     {{
-        \"functional_description\": {{
-            \"function_name1\": "Detailed description of function_name1.",
-            \"function_name2\": "Detailed description of function_name2."
+        \"general_purpose\":{{
+            \"function_name1\": "The general purpose in few sentences of function_name1.",
+            \"function_name2\": "The general purpose in few sentences of function_name2."
+        }}
+        \"implement_description\": {{
+            \"function_name1\": "Detailed implement description step by step in function_name1.",
+            \"function_name2\": "Detailed implement description step by step in function_name2."
             // Add more functions as needed.
         }},
         \"causes\": "Comprehensive explanation of the causes of the vulnerability.",
@@ -341,7 +345,7 @@ def ask_llm(cve_desc: dict) -> dict:
         diff += f"**{filename}**\n" + file.read().decode("utf-8") + "\n\n"
 
     # Fill in the prompt template
-    # FIXME: KeyError: '\n        "functional_description"'
+
     try:
         prompt = PROMPT_TEMPLATE_ABSTRACT.format(
             cve_desc=json.dumps(cve_desc, indent=4, ensure_ascii=False).replace(
@@ -357,9 +361,9 @@ def ask_llm(cve_desc: dict) -> dict:
         resp_raw = llm_handler.send_message(prompt)
         try:
             resp_dict = json.loads(resp_raw)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             logger.warning(
-                f"Failed to parse JSON response from LLM:{e}."
+                f"Failed to parse JSON response directly from LLM:{e}."
             )
             resp_dict = extract_json(resp_raw)
         logger.debug(f"Response from LLM in 1st stage: {resp_dict}")
@@ -373,7 +377,7 @@ def ask_llm(cve_desc: dict) -> dict:
             continue
         if not all(
             key in resp_dict.keys()
-            for key in ["functional_description", "causes", "solution"]
+            for key in ["general_purpose", "implement_description", "causes", "solution"]
         ):
             logger.warning(
                 f"Invalid response from LLM: Dismatched key {
@@ -383,7 +387,8 @@ def ask_llm(cve_desc: dict) -> dict:
 
             continue
         # Get the content in resp_dict
-        functional_desc = resp_dict["functional_description"]
+        general_purpose = resp_dict["general_purpose"]
+        functional_desc = resp_dict["implement_description"]
         causes = resp_dict["causes"]
         solution = resp_dict["solution"]
         break
@@ -394,8 +399,8 @@ def ask_llm(cve_desc: dict) -> dict:
 
     # The second stage of asking LLM
     PROMPT_TEMPLATE_GENERAL = """
-        You are tasked with analyzing the provided information about a CVE, including the code, patch, diff, and abstract descriptions of the cause and solution. Based on this information, please address the following WITHOUT referencing the original CVE description or the sepcific name of variables, functions, or classes:
-
+        With the detailed vulnerability knowledge extracted from the previous stage, your task is to abstract and generalize this knowledge to enhance its applicability across different scenarios. Based on this information, please address the following WITHOUT referencing the original CVE description or the sepcific name of variables, functions, or classes in the value:
+        
         1. **Function Summaries:**
         - Summarize the purpose and functionality of each function involved in the diff concisely and without using specific symbols or extra explanations.
 
@@ -404,18 +409,13 @@ def ask_llm(cve_desc: dict) -> dict:
 
         3. **Specific Solution to Fix the Vulnerability:**
         - Provide a summary of the specific solution implemented in the patch to address the vulnerability WITHOUT referencing the original CVE description or the sepcific name of variables, functions, or classes.
-        **Original code:**
-        {vulnerable_code}
-
-        **Patched code:**
-        {patched_code}
-
-        **Diff:**
-        {diff}
 
         **Abstract Purpose Description:**
-        {functional_desc}
+        {general_purpose}
 
+        **Implement details:**
+        {functional_desc}
+        
         **Abstract Causes:**
         {causes}
 
@@ -430,6 +430,7 @@ def ask_llm(cve_desc: dict) -> dict:
         {{
             "functional_description": {{
                 "function_name1": "Summary of function_name1",
+                //replace the key to the real function name
                 "function_name2": "Summary of function_name2"
                 // Add more functions as needed
             }},
@@ -439,9 +440,7 @@ def ask_llm(cve_desc: dict) -> dict:
         ```
         """
     prompt = PROMPT_TEMPLATE_GENERAL.format(
-        vulnerable_code=vulnerable_code,
-        patched_code=patched_code,
-        diff=diff,
+        general_purpose=general_purpose,
         functional_desc=functional_desc,
         causes=causes,
         solution=solution,
@@ -451,9 +450,9 @@ def ask_llm(cve_desc: dict) -> dict:
         resp_raw = llm_handler.send_message(prompt)
         try:
             resp_dict = json.loads(resp_raw)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             logger.warning(
-                f"Failed to parse JSON response from LLM:{e}."
+                f"Failed to parse JSON response directly from LLM:{e}."
             )
             resp_dict = extract_json(resp_raw)
         logger.debug(f"Response from LLM in 1st stage: {resp_dict}")
@@ -487,6 +486,7 @@ def ask_llm(cve_desc: dict) -> dict:
         return None
 
     # Merge the results to CVE description
+    cve_desc["general_purpose"] = general_purpose
     cve_desc["functional_desc"] = functional_desc
     cve_desc["causes_of_the_vuln"] = causes
     cve_desc["solution"] = solution
