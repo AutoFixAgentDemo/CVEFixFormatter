@@ -162,3 +162,5 @@ cython_debug/
 #.idea/
 config.yaml
 tests/*
+.vccode
+.DS_Store
