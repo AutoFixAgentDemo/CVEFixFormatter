@@ -60,7 +60,8 @@ def find_cve_directories(repo_path: str) -> Tuple[List[str], int]:
                 inner_dir_path = os.path.join(sub_dir_path, inner_dir)
                 if os.path.isdir(inner_dir_path) and cve_pattern.match(inner_dir):
                     cve_dirs.append(inner_dir_path)
-    logger.info(f"Found {len(cve_dirs)} CVEs in the  target directory {repo_path}")
+    logger.info(
+        f"Found {len(cve_dirs)} CVEs in the  target directory {repo_path}")
     return cve_dirs, len(cve_dirs)
 
 
@@ -183,7 +184,8 @@ def parse_commit(commit_dir: str, cve_desc: CVEDescription) -> CVEDescription:
     with open(commit_desc_path, "r") as f:
         commit_desc = json.load(f)
 
-    repo = commit_desc.get("owner", "N/A") + "/" + commit_desc.get("repo", "N/A")
+    repo = commit_desc.get("owner", "N/A") + "/" + \
+        commit_desc.get("repo", "N/A")
 
     # NOTE: A silly typo in vulnsrc
     commit_message = commit_desc.get("commit_massage", "N/A")
@@ -291,11 +293,13 @@ def ask_llm(cve_desc: CVEDescription) -> CVEDescription:
     for file in vuln_files:
         # Get the filename
         filename = file.filename
-        vulnerable_code += f"**{filename}**\n" + file.read().decode("utf-8") + "\n\n"
+        vulnerable_code += f"**{filename}**\n" + \
+            file.read().decode("utf-8") + "\n\n"
     for file in patched_files:
         # Get the filename
         filename = file.filename
-        patched_code += f"**{filename}**\n" + file.read().decode("utf-8") + "\n\n"
+        patched_code += f"**{filename}**\n" + \
+            file.read().decode("utf-8") + "\n\n"
     for file in diff_files:
         # Get the filename
         filename = file.filename
@@ -312,12 +316,12 @@ def ask_llm(cve_desc: CVEDescription) -> CVEDescription:
         cve_desc.desc.funcs_desc = func_desc
         logger.debug(
             f"Functional extraction finished:{
-                     func_desc.model_dump_json()}"
+                func_desc.model_dump_json()}"
         )
     else:
         logger.warning(
             f"Failed to extact functional desc for {
-            cve_desc.cve_meta.cve_number}"
+                cve_desc.cve_meta.cve_number}"
         )
         return None
 
@@ -345,7 +349,7 @@ def ask_llm(cve_desc: CVEDescription) -> CVEDescription:
     else:
         logger.warning(
             f"Failed to extract sec desc for {
-            cve_desc.cve_meta.cve_number} "
+                cve_desc.cve_meta.cve_number} "
         )
         return None
 
@@ -359,7 +363,8 @@ def main(
         callback=validate_path.validate_path,
         help="The path of Vulsrc repo's root path",
     ),
-    mongo_host: str = typer.Option("127.0.0.1", help="The host address of the mongodb"),
+    mongo_host: str = typer.Option(
+        "127.0.0.1", help="The host address of the mongodb"),
     mongo_port: int = typer.Option(27017, help="The port of the mongodb port"),
 ):
 

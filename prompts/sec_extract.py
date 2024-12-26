@@ -31,12 +31,12 @@ class InitSecInfo(BaseModel):
 # Example Output
 
 
-{
+{{
     "cve_id": "CVE-2021-12345",
     "description": "A use-after-free vulnerability in the handling of network packets.",
     "vulnerability_cause_details": "The vulnerability occurs because the application fails to properly free memory before reusing it, leading to a situation where freed memory is accessed after it has been released.",
     "patch_details": "The patch introduces a mechanism to ensure that memory is not reused until it is safely freed. Specifically, the patch modifies the function 'free_and_reuse' by adding a check to confirm that the memory block is no longer in use before freeing it."
-}
+}}
 
 
 # Input Data
