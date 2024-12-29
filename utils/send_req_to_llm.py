@@ -2,7 +2,7 @@
 Provide an universal interface to ask a language model for the expected response.
 """
 
-from loguru import logger
+from .logger import logger, set_log_level
 from .providers.ollama_api import OllamaChatBase
 from .extract_json import extract_json
 from models.llm_resp import FunctionInfo, FunctionInfoList

@@ -6,13 +6,13 @@ from typing import List, Tuple
 import tqdm
 import typer
 import yaml
-from loguru import logger
 
 from models.desc import CVEDescription
 from models.llm_resp import FunctionInfoList, InitSecInfo
 from models.meta import CVEMeta, PatchMeta
 from models.results import ExecutionResult, ExecutionSummary
 from utils import validate_path
+from utils.logger import logger, set_log_level
 from utils.mongo_interface import MongoInterface
 from utils.providers.ollama_api import OllamaChatBase
 from utils.send_req_to_llm import send_req_to_llm
@@ -374,7 +374,10 @@ def main(
     mongo_host: str = typer.Option(
         "127.0.0.1", help="The host address of the mongodb"),
     mongo_port: int = typer.Option(27017, help="The port of the mongodb port"),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Enable verbose mode (DEBUG logging)"),
 ):
+    set_log_level(verbose)
 
     logger.info(f"{repo_path=},{mongo_host=},{mongo_port=}")
     # Initialize the MongoDB connection

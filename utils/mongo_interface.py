@@ -4,7 +4,7 @@ from pymongo.collection import Collection
 from pymongo.database import Database
 from pymongo.cursor import Cursor
 from bson.objectid import ObjectId
-from loguru import logger
+from .logger import logger, set_log_level
 import gridfs
 
 

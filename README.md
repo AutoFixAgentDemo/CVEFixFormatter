@@ -50,23 +50,16 @@ cp config.example.yaml config.yaml
 Usage:
 
 ```plaintext
- Usage: vulnsrc_formatter.py [OPTIONS]                 
-                                                       
-╭─ Options ───────────────────────────────────────────╮
-│ *  --repo-path         TEXT     The path of Vulsrc  │
-│                                 repo's root path    │
-│                                 [default: None]     │
-│                                 [required]          │
-│    --mongo-host        TEXT     The host address of │
-│                                 the mongodb         │
-│                                 [default:           │
-│                                 127.0.0.1]          │
-│    --mongo-port        INTEGER  The port of the     │
-│                                 mongodb port        │
-│                                 [default: 27017]    │
-│    --help                       Show this message   │
-│                                 and exit.           │
-╰─────────────────────────────────────────────────────╯
+ Usage: vulnsrc_formatter.py [OPTIONS]                                                                                 
+                                                                                                                       
+╭─ Options ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ *  --repo-path           TEXT     The path of Vulsrc repo's root path [default: None] [required]                    │
+│    --mongo-host          TEXT     The host address of the mongodb [default: 127.0.0.1]                              │
+│    --mongo-port          INTEGER  The port of the mongodb port [default: 27017]                                     │
+│    --verbose     -v               Enable verbose mode (DEBUG logging)                                               │
+│    --help                         Show this message and exit.                                                       │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
 ```
 
 ### Flow

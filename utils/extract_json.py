@@ -2,7 +2,7 @@
 To extract json string from code fence"""
 import re
 import json
-from loguru import logger
+from utils.logger import logger, set_log_level
 
 
 def extract_json(input_text):
