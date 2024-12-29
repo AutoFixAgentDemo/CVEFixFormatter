@@ -11,6 +11,7 @@ from loguru import logger
 from models.desc import CVEDescription
 from models.llm_resp import FunctionInfoList, InitSecInfo
 from models.meta import CVEMeta, PatchMeta
+from models.results import ExecutionResult, ExecutionSummary
 from utils import validate_path
 from utils.mongo_interface import MongoInterface
 from utils.providers.ollama_api import OllamaChatBase
@@ -100,23 +101,23 @@ def parse_CVE(cve_dir: str):
     Parse the CVE data from the given directory.
 
     Args:
-        cve_dir (str): Path to the CVE directory.
+        cve_dir (str): Path to the CVE directory. e.g. 
 
     Returns:
-        None
+        ExecutionResult: The result of the parsing process.
     """
 
     # if no subdir exists, pass
     if not os.path.exists(cve_dir) or not os.path.isdir(cve_dir):
         # Assume this directory has no valid commit
         logger.warning(f"No valid commit in {cve_dir}, skipping")
-        return None
+        return ExecutionResult(status="no_valid_commit", cve_number="N/A", message=f"No valid commit in the directory {cve_dir}")
     else:
         # Check if the CVE has been parsed and saved to MongoDB
         cve_number = os.path.basename(cve_dir)
         if mongo_handler.find_one({"cve_meta.cve_number": cve_number}):
             logger.warning(f"Already parsed {cve_number}, skipping")
-            return None
+            return ExecutionResult(status="already_parsed", cve_number=cve_number, message="Already parsed and saved to MongoDB")
 
     logger.info(
         f"Processing {cve_dir}, find {
@@ -132,7 +133,7 @@ def parse_CVE(cve_dir: str):
                 validate_path.list_all_dirs_in_path(cve_dir)}"
         )
 
-        return None
+        return ExecutionResult(status="multiple_commits", cve_number=cve_number, message=f"Multiple commits in the directory {cve_dir}")
     else:
         commit_dir = os.path.join(
             cve_dir, validate_path.list_all_dirs_in_path(cve_dir)[0]
@@ -152,9 +153,9 @@ def parse_CVE(cve_dir: str):
         if cve_desc is None:
             logger.error(
                 f"Failed to parse {
-                    cve_desc_path}: Parse failed. Gracefully exiting..."
+                    cve_desc_path}: Parse failed. Gracefully skipping..."
             )
-            return None
+            return ExecutionResult(status="llm_parse_failed", cve_number=cve_desc.cve_meta.cve_number, message=f"Failed to parse the CVE description of {cve_desc_path}. Gracefully skipping...")
 
         # Save the parsed data to MongoDB
         # Convert the dataclass object to a dictionary
@@ -171,7 +172,7 @@ def parse_CVE(cve_dir: str):
         # cve_desc.id = str(cve_desc.id)
         logger.debug(f"Inserted data: {cve_desc_ready_to_insert} with id {
                      str(cve_desc_ready_to_insert['_id'])}")
-        return cve_desc
+        return ExecutionResult(status="success", cve_number=cve_desc.cve_meta.cve_number, message=f"Successfully parsed and saved to MongoDB with id {str(cve_desc_ready_to_insert["_id"])}")
 
 
 def parse_commit(commit_dir: str, cve_desc: CVEDescription) -> CVEDescription:
@@ -400,9 +401,14 @@ def main(
     logger.info(f"Found {dirs_cnt} CVEs in the target directory {repo_path}")
 
     # Main Loop. 遍历所有的CVE目录并解析其中的数据
+    # Initialize the summary
+    summary = ExecutionSummary()
     for cve_dir in tqdm.tqdm(cve_dirs, desc="Parsing CVEs", unit="CVE"):
         logger.info(f"Parsing {cve_dir}")
-        parse_CVE(cve_dir)
+        result = parse_CVE(cve_dir)
+        # Process the result and generate the final report
+        summary.update(result.model_dump())
+    logger.info(summary.display_summary())
 
 
 if __name__ == "__main__":
