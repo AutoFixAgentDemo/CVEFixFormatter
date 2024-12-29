@@ -13,16 +13,15 @@ You are a code analyst tasked with reading and understanding modified functions 
 Generate a JSON-formatted string that adheres to the `FunctionInfoList` model. The output should only include this JSON string without code fences and return nothing else unexpected explain.
 
 #### JSON Model:
-```Python
+
 class FunctionInfo(BaseModel):
     function_name: str  # Name of the function
-    file_name: str      # Path to the file containing the function in the input
     general_purpose: str  # General purpose or description of what the function does
-    implementation_details: List[str] = Field(default_factory=list)  # Detailed steps on how the function is implemented
+    implementation_details: List[str] = Field(default_factory=list)  # Detailed steps on how the function is implemented before patching
 
 class FunctionInfoList(BaseModel):
     functions: List[FunctionInfo] = Field(default_factory=list)
-```
+
 
 ### Example Output:
 
@@ -30,7 +29,6 @@ class FunctionInfoList(BaseModel):
 
     {{
             "function_name": "example_function",
-            "file_name": "src/example.py",
             "general_purpose": "This function performs an important security check.",
             "implementation_details": [
                 "Step 1: Validates input parameters.",

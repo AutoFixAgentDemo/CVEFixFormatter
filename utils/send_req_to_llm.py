@@ -5,10 +5,38 @@ Provide an universal interface to ask a language model for the expected response
 from loguru import logger
 from .providers.ollama_api import OllamaChatBase
 from .extract_json import extract_json
+from models.llm_resp import FunctionInfo, FunctionInfoList
 import json
 import yaml
 import pydantic
 import re
+
+import inspect
+
+
+CONVERTER_PROMPT = """
+
+You are given a JSON input representing function-related data. The field names in the input may not match exactly with the fields in the Pydantic model shown below. Please do the following for each object in the JSON input:
+        1.	Parse the object and match each field value to its corresponding field in the Pydantic model.
+        2.	Preserve all original field values exactly as they are. Do not modify, rephrase, or summarize any text.
+        3.	If the original JSON object does not include a particular field from the Pydantic model:
+        •	Use a "N/A" string for any missing string-based field.
+        •	Use a ["N/A"] array for any missing list-based field.
+        4.	If the original input contains:
+        •	Fields not present in the Pydantic model, discard them.
+        •	Any code fences, comments, or explanation text unrelated to the field values, discard them. No code fence(```) needed.
+        5.	Output a valid JSON string of transformed objects that conform to the Pydantic model, and return nothing else.
+
+Your response should be a JSON string of objects that can be directly validated by the following Pydantic model:
+**JSON Input to Transform**:
+
+{json_des}
+
+Your target Pydantic model is as follows:
+
+{model_def}
+
+"""
 
 
 def send_req_to_llm(
@@ -48,17 +76,37 @@ def send_req_to_llm(
         resp_raw = llm_handler.send_message(prompt)
         # Extract JSON from the response
 
+        logger.debug(f"Got the raw resp in the first stage:{resp_raw}")
+
+        # Resend the resp to LLM to convert to the correct model
+
+        # Get the source code of the pydantic model using inspect
+        str_exp_model = inspect.getsource(expected_model)
+        if expected_model is FunctionInfoList:
+            # Special process for Functional extraction to provide complete info
+            str_exp_model += "/n"+inspect.getsource(FunctionInfo)
+
+        resp_raw = llm_handler.send_message(CONVERTER_PROMPT.format(
+            json_des=resp_raw, model_def=str_exp_model))
+
+        if expected_model is FunctionInfoList:
+            # Special process for Functional extraction to prevent TypeError: llm_resp.FunctionInfoList() argument after ** must be a mapping, not list
+            resp_raw = f"{{\"functional_desc\":{resp_raw}}}"
+
         if resp_parsed := extract_json(resp_raw):
             # Validate the response with the expected model
             if resp_obj := validate_resp(resp_parsed, expected_model):
                 return resp_obj
+        # Failed to validate the response
         retry_cnt += 1
         logger.warning(
-            f"Failed to parse response from LLM. Retry {retry_cnt}/{MAX_RETRY}. Response: {resp_raw}"
+            f"Failed to parse response from LLM. Retry {
+                retry_cnt}/{MAX_RETRY}. {resp_raw=}"
         )
-    logger.warning(f"Failed to get valid response from LLM. Max retry reached.")
+    logger.warning(
+        f"Failed to get valid response from LLM. Max retry reached.")
     return None
-    # FIXME:大模型难以返回正确的类型，考虑把返回的字符串再送给大模型让大模型重新解析并返回正确的数据模型
+    # FIXED:大模型难以返回正确的类型，考虑把返回的字符串再送给大模型让大模型重新解析并返回正确的数据模型
 
 
 def validate_resp(resp_dict: dict, expected_model: pydantic.BaseModel):
@@ -91,11 +139,11 @@ def validate_resp(resp_dict: dict, expected_model: pydantic.BaseModel):
     # Parse the response with the expected model
     try:
         resp_obj = expected_model(**resp_dict)
-    except TypeError as e:
-        logger.warning(f"Failed to parse response from LLM with expected model: {e}")
+        return resp_obj
+    except Exception as e:
+        logger.warning(
+            f"Failed to parse response from LLM with expected model: {e}")
         return None
-
-    return resp_obj
 
 
 def extract_json(input_string):
@@ -119,7 +167,8 @@ def extract_json(input_string):
     if code_fence_start != -1:
         code_fence_end = input_string.find("```", code_fence_start + 3)
         if code_fence_end != -1:
-            json_str = input_string[code_fence_start + 3 : code_fence_end].strip()
+            json_str = input_string[code_fence_start +
+                                    3: code_fence_end].strip()
             result = try_parse_json(json_str)
             if result is not None:
                 return result

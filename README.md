@@ -26,6 +26,13 @@ Clone VulnCodeCollector
 git clone https://github.com/iridium-soda/VulnCodeCollector.git
 ```
 
+Run
+
+```shell
+conda activate cveformatter
+python3 vulnsrc_formatter.py --help
+```
+
 ### Config
 
 > [!tip]  

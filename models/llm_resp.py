@@ -13,8 +13,6 @@ from pydantic import BaseModel, Field
 class FunctionInfo(BaseModel):
     function_name: str = Field(
         default="", description="The name of the function")
-    file_name: str = Field(
-        default="", description="The path to the file where the function is defined")
     general_purpose: str = Field(
         default="", description="A brief description of the function's purpose")
     implementation_details: List[str] = Field(
@@ -24,7 +22,7 @@ class FunctionInfo(BaseModel):
 
 
 class FunctionInfoList(BaseModel):
-    functions: List[FunctionInfo] = Field(
+    functional_desc: List[FunctionInfo] = Field(
         default_factory=list,
         description="A list of FunctionInfo objects representing various functions"
     )

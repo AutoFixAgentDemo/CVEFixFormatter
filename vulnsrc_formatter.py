@@ -154,16 +154,19 @@ def parse_CVE(cve_dir: str):
             return None
 
         # Save the parsed data to MongoDB
+        # Convert the dataclass object to a dictionary
+        cve_desc_ready_to_insert = cve_desc.model_dump()
         try:
-            mongo_handler.insert(cve_desc)
-            logger.info(f"Inserted {cve_desc['cve_number']} to MongoDB")
+            result = mongo_handler.insert(cve_desc)
+            logger.info(f"Inserted {cve_desc.cve_meta.cve_number} to MongoDB")
         except Exception as e:
-            logger.exception(f"Failed to insert {cve_desc['cve_number']}: {e}")
+            logger.exception(f"Failed to insert {
+                             cve_desc.cve_meta.cve_number}: {e}")
 
-            # Convert _id to printable string
-            cve_desc["_id"] = str(cve_desc["_id"])
-
-            logger.debug(json.dumps(cve_desc, indent=4, ensure_ascii=False))
+        # Convert _id to printable string
+        # cve_desc._id = str(result.inserted_id)
+        # cve_desc.id = str(cve_desc.id)
+        logger.debug(json.dumps(cve_desc, indent=4, ensure_ascii=False))
         return cve_desc
 
 
@@ -332,13 +335,13 @@ def ask_llm(cve_desc: CVEDescription) -> CVEDescription:
         cve_number=cve_desc.cve_meta.cve_number,
         title=cve_desc.cve_meta.title,
         description=cve_desc.cve_meta.description,
-        weakness=(
+        weaknesses=(
             ",".join(cve_desc.cve_meta.weaknesses)
             if cve_desc.cve_meta.weaknesses
             else "N/A"
         ),
         commit_message=cve_desc.cve_meta.patch_meta.commit_message,
-        repo=cve_desc.patch_meta.repo,
+        repo=cve_desc.cve_meta.patch_meta.repo,
         vuln_source=vulnerable_code,
         patched_source=patched_code,
         diff_source=diff,
