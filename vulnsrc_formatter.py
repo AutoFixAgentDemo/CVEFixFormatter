@@ -111,7 +111,7 @@ def parse_CVE(cve_dir: str):
     else:
         # Check if the CVE has been parsed and saved to MongoDB
         cve_number = os.path.basename(cve_dir)
-        if mongo_handler.find_one({"cve_number": cve_number}):
+        if mongo_handler.find_one({"cve_meta.cve_number": cve_number}):
             logger.warning(f"Already parsed {cve_number}, skipping")
             return None
 
@@ -157,7 +157,7 @@ def parse_CVE(cve_dir: str):
         # Convert the dataclass object to a dictionary
         cve_desc_ready_to_insert = cve_desc.model_dump()
         try:
-            result = mongo_handler.insert(cve_desc)
+            mongo_handler.insert(cve_desc_ready_to_insert)
             logger.info(f"Inserted {cve_desc.cve_meta.cve_number} to MongoDB")
         except Exception as e:
             logger.exception(f"Failed to insert {
@@ -166,7 +166,8 @@ def parse_CVE(cve_dir: str):
         # Convert _id to printable string
         # cve_desc._id = str(result.inserted_id)
         # cve_desc.id = str(cve_desc.id)
-        logger.debug(json.dumps(cve_desc, indent=4, ensure_ascii=False))
+        logger.debug(f"Inserted data: {cve_desc_ready_to_insert} with id {
+                     str(cve_desc_ready_to_insert['_id'])}")
         return cve_desc
 
 

@@ -96,11 +96,13 @@ def send_req_to_llm(
         if resp_parsed := extract_json(resp_raw):
             # Validate the response with the expected model
             if resp_obj := validate_resp(resp_parsed, expected_model):
+                logger.info(
+                    f"Succeed to get valid response from LLM with expected model {expected_model.__name__}: {resp_obj}")
                 return resp_obj
         # Failed to validate the response
         retry_cnt += 1
         logger.warning(
-            f"Failed to parse response from LLM. Retry {
+            f"Failed to parse response from LLM with expected model {expected_model.__name__}. Retry {
                 retry_cnt}/{MAX_RETRY}. {resp_raw=}"
         )
     logger.warning(
