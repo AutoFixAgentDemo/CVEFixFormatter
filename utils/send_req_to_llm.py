@@ -71,7 +71,7 @@ def send_req_to_llm(
     llm_handler = OllamaChatBase(api_endpoints, model)
 
     retry_cnt = 0
-    MAX_RETRY = 3
+    MAX_RETRY = 5
     while retry_cnt < MAX_RETRY:
         resp_raw = llm_handler.send_message(prompt)
         # Extract JSON from the response
