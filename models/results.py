@@ -46,6 +46,6 @@ class ExecutionSummary:
         summary_str = ""
         for status, count in self.result_counts.items():
             summary_str += f"{status}: {count}\n"
-            if self.problematic_cves[status]:
+            if status in self.problematic_cves and self.problematic_cves[status]:
                 summary_str += f"  {self.problematic_cves[status]}\n"
         return summary_str
