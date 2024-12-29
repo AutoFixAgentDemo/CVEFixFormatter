@@ -79,11 +79,14 @@ def parse_cve_desc_json(cve_desc_path: str) -> CVEDescription:
         cve_raw = json.load(f)
 
     # Initialize the CVEDescription object with values from the JSON
+    # NOTE: to prevent empty value from being None
+    def value_getter(key, default_val): return cve_raw.get(
+        key, default_val) if cve_raw.get(key) else default_val
     cve_meta = CVEMeta(
-        cve_number=cve_raw.get("cve_number", "N/A"),
-        description=cve_raw.get("description", "N/A"),
-        title=cve_raw.get("title", "N/A"),
-        weaknesses=cve_raw.get("weaknesses", list()),
+        cve_number=value_getter("cve_number", "N/A"),
+        description=value_getter("description", "N/A"),
+        title=value_getter("title", "N/A"),
+        weaknesses=value_getter("weaknesses", list()),
     )
 
     cve_description = CVEDescription(cve_meta=cve_meta)
