@@ -1,5 +1,5 @@
 llm:
-  api_type: "ollama" # Only support "ollama" now
+  api_type: "ollama" # Only support "ollama"  for now. OpenAI API is on plan.
   base_url: ""
   api_key: "" # Not used for now
   model: "qwen2.5-coder:32b"
