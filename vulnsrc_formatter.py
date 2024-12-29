@@ -155,7 +155,7 @@ def parse_CVE(cve_dir: str):
                 f"Failed to parse {
                     cve_desc_path}: Parse failed. Gracefully skipping..."
             )
-            return ExecutionResult(status="llm_parse_failed", cve_number=cve_desc.cve_meta.cve_number, message=f"Failed to parse the CVE description of {cve_desc_path}. Gracefully skipping...")
+            return ExecutionResult(status="llm_parse_failed", cve_number=cve_number, message=f"Failed to parse the CVE description of {cve_number}. Gracefully skipping...")
 
         # Save the parsed data to MongoDB
         # Convert the dataclass object to a dictionary
