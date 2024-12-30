@@ -126,6 +126,10 @@ def parse_CVE(cve_dir: str):
 
     # if more than one subdir exists, pass
     # FIX: os.listdir is incorrect, should use os.scandir
+    if count_commits(cve_dir) == 0:
+        logger.warning(f"No commits in {cve_dir}, skipping")
+        return ExecutionResult(status="no_commit", cve_number=cve_number, message=f"No commit in the directory {cve_dir}")
+    
     if count_commits(cve_dir) != 1:
         logger.warning(f"Multiple commits in {cve_dir}, skipping")
         logger.debug(
