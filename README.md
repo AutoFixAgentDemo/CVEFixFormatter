@@ -4,7 +4,7 @@ CVEFixFormatter is a lightweight tool for transforming CVEfix dataset into custo
 
 我们的数据集来源于两个项目,分别是[CVEFix](https://github.com/secureIT-project/CVEfixes)和[VulnCodeCollector](https://github.com/iridium-soda/VulnCodeCollector).我们分别对这两个项目进行处理和清洗.以提取高级语义化的信息.并存入mongodb中.
 
-## CVE formatter
+## VulnSrc formatter
 
 该功能从[VulnCodeCollector](https://github.com/iridium-soda/VulnCodeCollector)中自动化解析并提取CVE信息，自动由大模型生成语义化信息并存入mongodb中。
 
@@ -78,3 +78,11 @@ flowchart LR
         commit_enrty-->save_desc_to_mongo
     end
 ```
+
+## CVEFIXFormatter
+
+该功能从CVEFIX数据集中读取相关CVE数据，并按照相同的方式存入mongo中。
+
+### Install&Config
+
+同VulnSrc Formatter。如果你能顺利运行VulnSrc Formatter，在外部环境不变的情况下可以直接运行该功能。

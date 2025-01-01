@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from .meta import CVEMeta, PatchMeta
+from .meta import CVEMeta
 from .llm_resp import FunctionInfoList, InitSecInfo
 
 
